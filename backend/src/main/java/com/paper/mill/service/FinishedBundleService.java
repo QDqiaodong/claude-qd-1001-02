@@ -70,7 +70,9 @@ public class FinishedBundleService {
         if (input.getOrder() == null || input.getOrder().getId() == null) {
             throw new BizException("必须指定所属订单");
         }
-        CuttingOrder order = orderRepository.findById(input.getOrder().getId())
+        // 对订单行加写锁：入库校验/回写与「改规格、改目标重量」共用同一行锁与乐观版本，
+        // 保证不会出现规格已改但入库仍按旧目标定量/幅宽/欠量计算的半更新
+        CuttingOrder order = orderRepository.findByIdForUpdate(input.getOrder().getId())
                 .orElseThrow(() -> new BizException("切纸订单不存在：" + input.getOrder().getId()));
         if ("已取消".equals(order.getStatus())) {
             throw new BizException("订单已取消，不能入库");

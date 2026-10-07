@@ -102,6 +102,9 @@ CREATE TABLE production_attempt (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------- 切纸工段 · 切纸订单 ----------------
+-- assigned_roll_id：排产时定格绑定的母卷。订单一旦排产，改规格必须重新核对这一卷
+-- 是否仍满足上机条件；领料也只能从这一卷领。未排产时为 NULL。
+-- version：乐观锁版本号，两名操作员同时改同一订单时只放行一方，另一方按当前版本冲突处理。
 CREATE TABLE cutting_order (
     id               BIGINT AUTO_INCREMENT PRIMARY KEY,
     order_no         VARCHAR(32)  NOT NULL UNIQUE,
@@ -111,7 +114,11 @@ CREATE TABLE cutting_order (
     target_weight_kg DECIMAL(10,2) NOT NULL,
     done_weight_kg   DECIMAL(10,2) NOT NULL DEFAULT 0,
     status           VARCHAR(16)  NOT NULL COMMENT '待排产/切裁中/已完成/已取消',
-    deadline         DATE
+    deadline         DATE,
+    assigned_roll_id BIGINT       NULL COMMENT '排产绑定的母卷；一旦绑定，改规格需重新核对该卷是否仍可上机',
+    version          BIGINT       NOT NULL DEFAULT 0 COMMENT '乐观锁版本，并发修改只放行一方',
+    CONSTRAINT fk_order_assigned_roll FOREIGN KEY (assigned_roll_id) REFERENCES paper_roll (id),
+    INDEX idx_order_assigned_roll (assigned_roll_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------- 切纸工段 · 切裁领料记录（闭环账本，只增不改） ----------------
@@ -229,6 +236,12 @@ INSERT INTO cutting_order (order_no, customer_name, target_grammage, target_widt
 ('CO-2026003', '时代包装', 60,  640,  900.00,    0.00, '待排产', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 10 DAY),
 ('CO-2026004', '联合书刊', 80,  850, 1500.00,  430.00, '切裁中', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 4 DAY),
 ('CO-2026005', '老客户A',  90, 1500,  500.00,    0.00, '待排产', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 8 DAY);
+
+-- 排产绑定回填：切裁中的订单必须定格到一卷仍满足上机条件的母卷。
+-- CO-2026001 → R-2026001（70g/3150mm，可用，领料账本也在这一卷上）；
+-- CO-2026004 → R-2026003（80g/2400mm，可用；其幅宽/定量对 80g/850mm 目标均合格）。
+UPDATE cutting_order SET assigned_roll_id = 1 WHERE order_no = 'CO-2026001';
+UPDATE cutting_order SET assigned_roll_id = 3 WHERE order_no = 'CO-2026004';
 
 INSERT INTO finished_bundle (bundle_no, order_id, grammage_gsm, width_mm, sheet_count, weight_kg, warehouse_zone, status, stored_at, outbound_at) VALUES
 ('FB-2026001', 1, 70, 787,  12000, 620.00, 'A区', '已入库', UTC_TIMESTAMP() + INTERVAL 8 HOUR - INTERVAL 1 DAY, NULL),

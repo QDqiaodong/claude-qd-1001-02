@@ -1,11 +1,14 @@
 package com.paper.mill.common;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,6 +23,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBiz(BizException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail(e.getMessage()));
+    }
+
+    /**
+     * 乐观版本冲突：409 + 当前版本与具体冲突原因。
+     *
+     * <p>data 里带 currentVersion，失败方前端可直接回填并提示用户按最新状态重改，
+     * 不允许在旧规格上强行覆盖。</p>
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleConflict(ConflictException e) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("currentVersion", e.getCurrentVersion());
+        ApiResponse<Map<String, Object>> body = new ApiResponse<>(false, e.getMessage(), data);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * JPA 乐观锁兜底（极端调度下绕过显式版本核对时的最后一道闸）：同样按 409 处理，
+     * 绝不让后提交方静默覆盖，也不留下规格已改、关联数据仍旧口径的半更新。
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimistic(ObjectOptimisticLockingFailureException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail("订单刚被其他操作员修改过（版本已变化），请刷新订单详情、按当前版本重新核对后再提交"));
     }
 
     /**

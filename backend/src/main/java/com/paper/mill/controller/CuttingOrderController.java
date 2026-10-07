@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.paper.mill.common.ApiResponse;
+import com.paper.mill.dto.CuttingOrderUpdateRequest;
 import com.paper.mill.dto.RequisitionRequest;
 import com.paper.mill.entity.CuttingOrder;
 import com.paper.mill.entity.CuttingRequisition;
@@ -47,13 +48,27 @@ public class CuttingOrderController {
         return ApiResponse.success(orderService.get(id));
     }
 
+    /**
+     * 订单详情快照：规格/版本 + 绑定母卷匹配结论 + 欠量/完成率 + 领料账本/留痕 + 成品历史，
+     * 同一次读出来的一份最新状态。刷新或重开详情页只认这里，旧候选母卷结论不会残留。
+     */
+    @GetMapping("/{id}/detail")
+    public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
+        return ApiResponse.success(orderService.detail(id));
+    }
+
     @PostMapping
     public ApiResponse<CuttingOrder> create(@RequestBody CuttingOrder input) {
         return ApiResponse.success("订单已创建", orderService.create(input));
     }
 
+    /**
+     * 修改订单：请求体必须带编辑所依据的 expectedVersion；已绑定母卷时改规格会在
+     * 后端事务内重新核对该母卷，不满足整笔拒绝（400）；版本过期返回 409 与当前版本。
+     */
     @PutMapping("/{id}")
-    public ApiResponse<CuttingOrder> update(@PathVariable Long id, @RequestBody CuttingOrder input) {
+    public ApiResponse<CuttingOrder> update(@PathVariable Long id,
+                                            @RequestBody CuttingOrderUpdateRequest input) {
         return ApiResponse.success("已更新", orderService.update(id, input));
     }
 

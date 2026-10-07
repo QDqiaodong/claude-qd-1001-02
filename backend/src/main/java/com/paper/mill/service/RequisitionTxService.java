@@ -93,6 +93,14 @@ public class RequisitionTxService {
             reasons.add("母卷状态为「" + roll.getStatus() + "」，不可领料（只有「可用」母卷可领）");
         }
 
+        // ③.5 排产绑定：订单已定格到某卷母卷后，只能从这一卷领料，
+        // 不允许拿着规格恰好也合格的别的卷绕过排产口径（未绑定的历史订单沿用旧校验）
+        if (order.getAssignedRoll() != null
+                && !order.getAssignedRoll().getId().equals(roll.getId())) {
+            reasons.add("订单已排产绑定母卷 " + order.getAssignedRoll().getRollNo()
+                    + "，不能从母卷 " + roll.getRollNo() + " 领料");
+        }
+
         // ④ 规格仍匹配：幅宽 >= 目标幅宽、定量偏差 <= GRAMMAGE_TOLERANCE
         if (roll.getWidthMm() < order.getTargetWidthMm()) {
             reasons.add("母卷幅宽 " + roll.getWidthMm() + "mm 小于订单目标幅宽 "

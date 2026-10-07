@@ -6,11 +6,15 @@ import java.time.LocalDate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -60,6 +64,23 @@ public class CuttingOrder {
     @Column(name = "deadline")
     private LocalDate deadline;
 
+    /**
+     * 排产绑定的母卷。待排产订单为 null；排产成功后定格，是订单「当前母卷」的唯一口径：
+     * 改规格时重新核对它、领料只能从它领、详情页的匹配结论按它展示。
+     */
+    // EAGER：订单列表/详情要直接带出 assignedRollNo，且本侧不存在超大集合
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "assigned_roll_id")
+    private PaperRoll assignedRoll;
+
+    /**
+     * 乐观锁版本。任何修改订单的事务（编辑规格/交期、排产、状态推进、入库回写）提交时
+     * 自动加一；两名操作员同时改同一订单时只有一方提交成功，失败方拿到当前版本与冲突原因。
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     /** 欠量（千克），派生字段：目标 - 已入库 */
     @Transient
     public BigDecimal getGapWeightKg() {
@@ -88,5 +109,17 @@ public class CuttingOrder {
             return null;
         }
         return (int) LocalDate.now().until(deadline).getDays();
+    }
+
+    /** 排产母卷号，派生字段；未排产为 null */
+    @Transient
+    public String getAssignedRollNo() {
+        return assignedRoll == null ? null : assignedRoll.getRollNo();
+    }
+
+    /** 是否已绑定排产母卷 */
+    @Transient
+    public boolean isAssigned() {
+        return assignedRoll != null;
     }
 }

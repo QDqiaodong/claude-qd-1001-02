@@ -6,11 +6,17 @@ const http = axios.create({ baseURL: '/api', timeout: 20000 })
 http.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error?.response?.data?.message || error?.message || '请求失败'
+    const status = error?.response?.status
+    const body = error?.response?.data
+    const message = body?.message || error?.message || '请求失败'
     const wrapped = new Error(message)
     // 没有 response 说明请求没到达后端（断网/超时/连接被重置），前端据此决定：
     // 这种失败保留同一 requestToken 允许原样重试，由后端幂等兜底防重复领料
     wrapped.networkError = !error?.response
+    // 409：订单被其他人先改了，currentVersion 是服务端当前版本，前端必须按它重新加载
+    wrapped.conflict = status === 409
+    wrapped.currentVersion = body?.data?.currentVersion ?? null
+    wrapped.status = status || 0
     return Promise.reject(wrapped)
   }
 )
@@ -59,6 +65,8 @@ export default {
   listOrders: (p) => call(http.get('/cutting-orders', params(p))),
   createOrder: (d) => call(http.post('/cutting-orders', d)),
   updateOrder: (id, d) => call(http.put(`/cutting-orders/${id}`, d)),
+  // 详情快照：规格/版本 + 绑定母卷匹配结论 + 欠量/进度 + 领料账本/留痕 + 成品历史，同一份最新状态
+  orderDetail: (id) => call(http.get(`/cutting-orders/${id}/detail`)),
   checkRoll: (id, rollNo) => call(http.get(`/cutting-orders/${id}/check-roll`, params({ rollNo }))),
   assignRoll: (id, rollNo) => call(http.post(`/cutting-orders/${id}/assign-roll`, null, params({ rollNo }))),
   transferOrder: (id, target) => call(http.post(`/cutting-orders/${id}/transfer`, null, params({ target }))),

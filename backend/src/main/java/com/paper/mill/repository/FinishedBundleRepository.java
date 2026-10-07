@@ -13,6 +13,9 @@ public interface FinishedBundleRepository extends JpaRepository<FinishedBundle, 
 
     List<FinishedBundle> findByOrderId(Long orderId);
 
+    /** 订单详情追溯：按入库时间倒序看本订单的全部成品件 */
+    List<FinishedBundle> findByOrderIdOrderByStoredAtDesc(Long orderId);
+
     List<FinishedBundle> findByStatus(String status);
 
     List<FinishedBundle> findByWarehouseZone(String zone);
