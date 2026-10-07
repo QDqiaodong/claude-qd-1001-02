@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.paper.mill.common.ApiResponse;
+import com.paper.mill.dto.CuttingOrderDetail;
 import com.paper.mill.dto.RequisitionRequest;
 import com.paper.mill.entity.CuttingOrder;
 import com.paper.mill.entity.CuttingRequisition;
@@ -43,8 +44,8 @@ public class CuttingOrderController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<CuttingOrder> get(@PathVariable Long id) {
-        return ApiResponse.success(orderService.get(id));
+    public ApiResponse<CuttingOrderDetail> get(@PathVariable Long id) {
+        return ApiResponse.success(orderService.detail(id));
     }
 
     @PostMapping
@@ -54,7 +55,9 @@ public class CuttingOrderController {
 
     @PutMapping("/{id}")
     public ApiResponse<CuttingOrder> update(@PathVariable Long id, @RequestBody CuttingOrder input) {
-        return ApiResponse.success("已更新", orderService.update(id, input));
+        return ApiResponse.success(
+                "订单已更新；已有领料和成品追溯保留，欠量与完成率按最新规格重算",
+                orderService.update(id, input));
     }
 
     /** 校验母卷能否用于本订单（含切裁领料可领上限） */
@@ -65,14 +68,18 @@ public class CuttingOrderController {
 
     /** 排产：指定母卷上机，订单推进到切裁中 */
     @PostMapping("/{id}/assign-roll")
-    public ApiResponse<CuttingOrder> assignRoll(@PathVariable Long id, @RequestParam String rollNo) {
-        return ApiResponse.success("已排产", orderService.assignRoll(id, rollNo));
+    public ApiResponse<CuttingOrder> assignRoll(@PathVariable Long id,
+                                                @RequestParam String rollNo,
+                                                @RequestParam(required = false) Long version) {
+        return ApiResponse.success("已排产", orderService.assignRoll(id, rollNo, version));
     }
 
     /** 状态推进 */
     @PostMapping("/{id}/transfer")
-    public ApiResponse<CuttingOrder> transfer(@PathVariable Long id, @RequestParam String target) {
-        return ApiResponse.success("状态已更新", orderService.transfer(id, target));
+    public ApiResponse<CuttingOrder> transfer(@PathVariable Long id,
+                                              @RequestParam String target,
+                                              @RequestParam(required = false) Long version) {
+        return ApiResponse.success("状态已更新", orderService.transfer(id, target, version));
     }
 
     // ---------------- 切裁领料闭环 ----------------

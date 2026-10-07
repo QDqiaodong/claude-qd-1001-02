@@ -6,6 +6,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -40,6 +41,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotReadable(HttpMessageNotReadableException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail("请求体格式有误，请检查 JSON 字段类型"));
+    }
+
+    /**
+     * 乐观锁冲突：409，带当前版本、当前订单快照和具体冲突原因。
+     */
+    @ExceptionHandler(VersionConflictException.class)
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> handleVersion(VersionConflictException e) {
+        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("expectedVersion", e.getExpectedVersion());
+        data.put("currentVersion", e.getCurrentVersion());
+        if (e.getCurrent() != null) {
+            data.putAll(e.getCurrent());
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                new ApiResponse<>(false, e.getMessage(), data));
+    }
+
+    /**
+     * JPA 版本号兜底冲突：调用方拿到行锁后仍可能被版本字段拦截。
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail("订单已被其他操作员修改，请刷新后基于当前版本重试"));
     }
 
     /**

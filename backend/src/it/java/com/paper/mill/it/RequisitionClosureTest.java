@@ -270,7 +270,8 @@ class RequisitionClosureTest {
         assertThat(e.getMessage()).contains("已切完");
 
         // 订单取消后，成功的领料记录依然在（不能因状态变化而消失）
-        orderService.transfer(f.orderId, "已取消");
+        orderService.transfer(f.orderId, "已取消",
+                orderRepository.findById(f.orderId).orElseThrow().getVersion());
         assertThat(requisitionService.listByOrder(f.orderId)).hasSize(1);
         assertThat(requisitionService.listByRoll(f.rollId)).hasSize(1);
     }
@@ -316,7 +317,10 @@ class RequisitionClosureTest {
             rollId = roll.getId();
 
             orderId = createOrder(orderRepository, n);
-            orderNo = orderRepository.findById(orderId).orElseThrow().getOrderNo();
+            CuttingOrder order = orderRepository.findById(orderId).orElseThrow();
+            order.setAssignedRoll(roll);
+            orderRepository.save(order);
+            orderNo = order.getOrderNo();
         }
 
         /** 只再建一张「切裁中」订单，绑定到已存在的母卷（两名操作员抢同一卷） */
@@ -325,6 +329,10 @@ class RequisitionClosureTest {
                                    Long existingRollId, String existingRollNo) {
             long n = SEQ.incrementAndGet();
             Long orderId = createOrder(orderRepository, n);
+            PaperRoll roll = rollRepository.findById(existingRollId).orElseThrow();
+            CuttingOrder order = orderRepository.findById(orderId).orElseThrow();
+            order.setAssignedRoll(roll);
+            orderRepository.save(order);
             return new Fixture(rollRepository, orderRepository, existingRollId, existingRollNo,
                     orderId, "CO-IT-" + n);
         }

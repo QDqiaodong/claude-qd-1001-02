@@ -70,10 +70,10 @@ public class FinishedBundleService {
         if (input.getOrder() == null || input.getOrder().getId() == null) {
             throw new BizException("必须指定所属订单");
         }
-        CuttingOrder order = orderRepository.findById(input.getOrder().getId())
+        CuttingOrder order = orderRepository.findByIdForUpdate(input.getOrder().getId())
                 .orElseThrow(() -> new BizException("切纸订单不存在：" + input.getOrder().getId()));
-        if ("已取消".equals(order.getStatus())) {
-            throw new BizException("订单已取消，不能入库");
+        if ("已取消".equals(order.getStatus()) || "已完成".equals(order.getStatus())) {
+            throw new BizException("订单已处于「" + order.getStatus() + "」，不能入库");
         }
         if (input.getGrammageGsm() == null || input.getGrammageGsm() <= 0) {
             throw new BizException("定量必须大于 0");
@@ -92,10 +92,15 @@ public class FinishedBundleService {
         if (input.getWeightKg() == null || input.getWeightKg().signum() <= 0) {
             throw new BizException("重量必须大于 0");
         }
-        // 规则②：不得超过订单欠量
-        if (input.getWeightKg().compareTo(order.getGapWeightKg()) > 0) {
+        // 规则②：不得超过订单欠量。已入库重量以成品账本为权威口径，避免旧并发缓存造成超入。
+        BigDecimal inboundWeight = bundleRepository.sumWeightByOrderId(order.getId());
+        BigDecimal gapWeight = order.getTargetWeightKg().subtract(inboundWeight);
+        if (gapWeight.signum() < 0) {
+            gapWeight = BigDecimal.ZERO;
+        }
+        if (input.getWeightKg().compareTo(gapWeight) > 0) {
             throw new BizException("入库重量 " + input.getWeightKg() + " 超过订单欠量 "
-                    + order.getGapWeightKg() + " 千克");
+                    + gapWeight + " 千克");
         }
         if (!Dict.isValidWarehouseZone(input.getWarehouseZone())) {
             throw new BizException("库区不合法：" + input.getWarehouseZone());
@@ -113,8 +118,8 @@ public class FinishedBundleService {
         bundle.setStoredAt(LocalDateTime.now());
         FinishedBundle saved = bundleRepository.save(bundle);
 
-        // 回写订单已入库重量
-        order.setDoneWeightKg(order.getDoneWeightKg().add(input.getWeightKg()));
+        // 回写订单已入库重量（按账本汇总修正，成品入库和订单规格修改使用同一口径）
+        order.setDoneWeightKg(inboundWeight.add(input.getWeightKg()));
         orderRepository.save(order);
         return saved;
     }

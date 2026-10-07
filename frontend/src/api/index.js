@@ -8,6 +8,8 @@ http.interceptors.response.use(
   (error) => {
     const message = error?.response?.data?.message || error?.message || '请求失败'
     const wrapped = new Error(message)
+    wrapped.status = error?.response?.status
+    wrapped.data = error?.response?.data?.data || null
     // 没有 response 说明请求没到达后端（断网/超时/连接被重置），前端据此决定：
     // 这种失败保留同一 requestToken 允许原样重试，由后端幂等兜底防重复领料
     wrapped.networkError = !error?.response
@@ -59,9 +61,12 @@ export default {
   listOrders: (p) => call(http.get('/cutting-orders', params(p))),
   createOrder: (d) => call(http.post('/cutting-orders', d)),
   updateOrder: (id, d) => call(http.put(`/cutting-orders/${id}`, d)),
+  getOrder: (id) => call(http.get(`/cutting-orders/${id}`)),
   checkRoll: (id, rollNo) => call(http.get(`/cutting-orders/${id}/check-roll`, params({ rollNo }))),
-  assignRoll: (id, rollNo) => call(http.post(`/cutting-orders/${id}/assign-roll`, null, params({ rollNo }))),
-  transferOrder: (id, target) => call(http.post(`/cutting-orders/${id}/transfer`, null, params({ target }))),
+  assignRoll: (id, rollNo, version) =>
+    call(http.post(`/cutting-orders/${id}/assign-roll`, null, params({ rollNo, version }))),
+  transferOrder: (id, target, version) =>
+    call(http.post(`/cutting-orders/${id}/transfer`, null, params({ target, version }))),
 
   // 切裁领料闭环：登记（请求体带 requestToken 幂等令牌）、订单侧追溯、母卷侧追溯
   submitRequisition: (id, d) => call(http.post(`/cutting-orders/${id}/requisitions`, d)),

@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.paper.mill.common.BizException;
 import com.paper.mill.common.Dict;
 import com.paper.mill.entity.PaperRoll;
+import com.paper.mill.repository.CuttingOrderRepository;
 import com.paper.mill.repository.PaperRollRepository;
 
 /**
@@ -21,9 +22,12 @@ import com.paper.mill.repository.PaperRollRepository;
 public class PaperRollService {
 
     private final PaperRollRepository rollRepository;
+    private final CuttingOrderRepository orderRepository;
 
-    public PaperRollService(PaperRollRepository rollRepository) {
+    public PaperRollService(PaperRollRepository rollRepository,
+                            CuttingOrderRepository orderRepository) {
         this.rollRepository = rollRepository;
+        this.orderRepository = orderRepository;
     }
 
     public List<PaperRoll> list(Long machineId, String status, String grade) {
@@ -49,7 +53,12 @@ public class PaperRollService {
 
     @Transactional
     public PaperRoll update(Long id, PaperRoll input) {
-        PaperRoll roll = get(id);
+        PaperRoll roll = rollRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("纸卷不存在：" + id));
+        if ((input.getWidthMm() != null || input.getGrammageGsm() != null || input.getWeightKg() != null)
+                && hasActiveBinding(id)) {
+            throw new BizException("该母卷已绑定切裁中订单，不能直接修改幅宽、定量或重量；请先在订单侧重新核对或改走领料扣减");
+        }
         if (input.getWidthMm() != null) {
             if (input.getWidthMm() <= 0) {
                 throw new BizException("幅宽必须大于 0");
@@ -79,7 +88,11 @@ public class PaperRollService {
     /** 检验判废：待检 → 报废；判可用由 ProductionAccessService 检查检修准入。 */
     @Transactional
     public PaperRoll reject(Long id, String grade) {
-        PaperRoll roll = get(id);
+        PaperRoll roll = rollRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("纸卷不存在：" + id));
+        if (hasActiveBinding(id)) {
+            throw new BizException("该母卷已绑定切裁中订单，不能报废；订单规格/领料状态必须先按后端规则处理");
+        }
         if (!Dict.canTransferRoll(roll.getStatus(), "报废")) {
             throw new BizException("不允许从「" + roll.getStatus() + "」转为「报废」");
         }
@@ -96,9 +109,13 @@ public class PaperRollService {
     /** 状态流转：可用 → 已切完 / 报废 */
     @Transactional
     public PaperRoll transfer(Long id, String target) {
-        PaperRoll roll = get(id);
+        PaperRoll roll = rollRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("纸卷不存在：" + id));
         if (!Dict.canTransferRoll(roll.getStatus(), target)) {
             throw new BizException("不允许从「" + roll.getStatus() + "」转为「" + target + "」");
+        }
+        if ("报废".equals(target) && hasActiveBinding(id)) {
+            throw new BizException("该母卷已绑定切裁中订单，不能报废；订单规格/领料状态必须先按后端规则处理");
         }
         roll.setStatus(target);
         return rollRepository.save(roll);
@@ -113,7 +130,11 @@ public class PaperRollService {
      */
     @Transactional
     public PaperRoll consume(Long id, Integer lengthM, BigDecimal weightKg) {
-        PaperRoll roll = get(id);
+        PaperRoll roll = rollRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("纸卷不存在：" + id));
+        if (hasActiveBinding(id)) {
+            throw new BizException("该母卷已绑定切裁中订单，余量只能通过切裁领料账本扣减");
+        }
         if (!Dict.isRollUsable(roll.getStatus())) {
             throw new BizException("只有「可用」的纸卷能上切纸机，当前状态：" + roll.getStatus());
         }
@@ -136,5 +157,10 @@ public class PaperRollService {
             roll.setStatus("已切完");
         }
         return rollRepository.save(roll);
+    }
+
+    private boolean hasActiveBinding(Long rollId) {
+        return orderRepository.findByAssignedRollId(rollId).stream()
+                .anyMatch(o -> "切裁中".equals(o.getStatus()));
     }
 }

@@ -6,11 +6,15 @@ import java.time.LocalDate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -37,6 +41,11 @@ public class CuttingOrder {
     @Column(name = "customer_name", nullable = false, length = 64)
     private String customerName;
 
+    /** 排产时绑定的母卷；绑定后修改规格必须重新核对这一卷 */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "assigned_roll_id")
+    private PaperRoll assignedRoll;
+
     /** 目标定量（g/m2） */
     @Column(name = "target_grammage", nullable = false)
     private Integer targetGrammage;
@@ -57,8 +66,19 @@ public class CuttingOrder {
     @Column(name = "status", nullable = false, length = 16)
     private String status;
 
+    /** 乐观锁版本：两名操作员同时保存时，后提交方必须基于当前版本重试 */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     @Column(name = "deadline")
     private LocalDate deadline;
+
+    /** 已绑定排产母卷号，派生字段 */
+    @Transient
+    public String getAssignedRollNo() {
+        return assignedRoll == null ? null : assignedRoll.getRollNo();
+    }
 
     /** 欠量（千克），派生字段：目标 - 已入库 */
     @Transient

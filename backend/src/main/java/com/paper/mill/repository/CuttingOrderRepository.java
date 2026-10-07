@@ -20,6 +20,8 @@ public interface CuttingOrderRepository extends JpaRepository<CuttingOrder, Long
 
     List<CuttingOrder> findByCustomerName(String customerName);
 
+    List<CuttingOrder> findByAssignedRollId(Long rollId);
+
     /**
      * 按主键查订单并加写锁。
      *

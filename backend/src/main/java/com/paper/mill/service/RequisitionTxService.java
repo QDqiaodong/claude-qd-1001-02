@@ -79,6 +79,9 @@ public class RequisitionTxService {
         if (!"切裁中".equals(order.getStatus())) {
             reasons.add("订单当前状态为「" + order.getStatus() + "」，只有「切裁中」的订单能登记领料");
         }
+        if (order.getAssignedRoll() == null) {
+            reasons.add("订单尚未绑定排产母卷，不能登记领料");
+        }
 
         // ② 再锁母卷行（固定锁顺序的第二把锁）
         PaperRoll roll = rollRepository.findByRollNoForUpdate(req.getRollNo().trim()).orElse(null);
@@ -86,6 +89,10 @@ public class RequisitionTxService {
             reasons.add("母卷不存在：" + req.getRollNo());
             persistFailure(orderId, null, req, reasons, now);
             throw new RequisitionFailedException(join(reasons));
+        }
+        if (order.getAssignedRoll() != null && !roll.getId().equals(order.getAssignedRoll().getId())) {
+            reasons.add("请求母卷 " + roll.getRollNo() + " 不是订单绑定的排产母卷 "
+                    + order.getAssignedRoll().getRollNo());
         }
 
         // ③ 母卷状态

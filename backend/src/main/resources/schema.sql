@@ -110,8 +110,12 @@ CREATE TABLE cutting_order (
     target_width_mm  INT          NOT NULL COMMENT '目标幅宽，必须 <= 母卷幅宽',
     target_weight_kg DECIMAL(10,2) NOT NULL,
     done_weight_kg   DECIMAL(10,2) NOT NULL DEFAULT 0,
+    assigned_roll_id BIGINT       NULL COMMENT '排产时绑定的母卷，规格修改后必须重新核对',
     status           VARCHAR(16)  NOT NULL COMMENT '待排产/切裁中/已完成/已取消',
-    deadline         DATE
+    version          BIGINT       NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    deadline         DATE,
+    CONSTRAINT fk_order_assigned_roll FOREIGN KEY (assigned_roll_id) REFERENCES paper_roll (id),
+    INDEX idx_order_assigned_roll (assigned_roll_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------- 切纸工段 · 切裁领料记录（闭环账本，只增不改） ----------------
@@ -223,12 +227,14 @@ INSERT INTO production_attempt
  '纸机 PM-04 当前为「检修」（检修单 MX-000001），禁止新建母卷；需经办人完成检修确认恢复后再登记产出',
  UTC_TIMESTAMP() + INTERVAL 8 HOUR - INTERVAL 3 HOUR);
 
-INSERT INTO cutting_order (order_no, customer_name, target_grammage, target_width_mm, target_weight_kg, done_weight_kg, status, deadline) VALUES
-('CO-2026001', '华东彩印', 70,  787, 1800.00,  620.00, '切裁中', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 6 DAY),
-('CO-2026002', '新华印务', 70, 1092, 2400.00, 2400.00, '已完成', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 3 DAY),
-('CO-2026003', '时代包装', 60,  640,  900.00,    0.00, '待排产', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 10 DAY),
-('CO-2026004', '联合书刊', 80,  850, 1500.00,  430.00, '切裁中', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 4 DAY),
-('CO-2026005', '老客户A',  90, 1500,  500.00,    0.00, '待排产', UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 8 DAY);
+INSERT INTO cutting_order
+    (order_no, customer_name, target_grammage, target_width_mm, target_weight_kg,
+     done_weight_kg, assigned_roll_id, status, version, deadline) VALUES
+('CO-2026001', '华东彩印', 70,  787, 1800.00, 1030.00, 1, '切裁中', 0, UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 6 DAY),
+('CO-2026002', '新华印务', 70, 1092, 2400.00, 2400.00, 2, '已完成', 0, UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 3 DAY),
+('CO-2026003', '时代包装', 60,  640,  900.00,    0.00, NULL, '待排产', 0, UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 10 DAY),
+('CO-2026004', '联合书刊', 80,  850, 1500.00,  430.00, 3, '切裁中', 0, UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 4 DAY),
+('CO-2026005', '老客户A',  90, 1500,  500.00,    0.00, NULL, '待排产', 0, UTC_TIMESTAMP() + INTERVAL 8 HOUR + INTERVAL 8 DAY);
 
 INSERT INTO finished_bundle (bundle_no, order_id, grammage_gsm, width_mm, sheet_count, weight_kg, warehouse_zone, status, stored_at, outbound_at) VALUES
 ('FB-2026001', 1, 70, 787,  12000, 620.00, 'A区', '已入库', UTC_TIMESTAMP() + INTERVAL 8 HOUR - INTERVAL 1 DAY, NULL),
